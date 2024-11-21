@@ -11,6 +11,7 @@ import {
   Node as SlateNode,
   BaseEditor,
   Path,
+  Range,
 } from "slate";
 
 export enum Type {
@@ -298,7 +299,7 @@ export const manipulateTab = (editor: BaseEditor) => {
 
         if (!toDelete || !parentNode) return;
 
-        (toDelete[0] as BaseElement | undefined)?.children.forEach((v, i) => {
+        (toDelete[0] as BaseElement | undefined)?.children.forEach((_) => {
           Transforms.moveNodes(editor, {
             at: [...toDelete[1], 0],
             to: [
@@ -360,7 +361,7 @@ export const manipulateTab = (editor: BaseEditor) => {
           | BaseElement
           | undefined;
 
-        toDelete?.children.forEach((v, i) => {
+        toDelete?.children.forEach((_) => {
           Transforms.moveNodes(editor, {
             at: [...next, 0, 1, 0],
             to: [
@@ -380,7 +381,8 @@ export const manipulateTab = (editor: BaseEditor) => {
 
 export const manipulateShiftTab = (editor: BaseEditor) => {
   const { selection } = editor;
-  if (selection) {
+
+  if (selection && Range.isCollapsed(selection)) {
     const [match] = Editor.nodes(editor, {
       reverse: true,
       match: (n: SlateNode & { type?: Type }) =>
@@ -392,13 +394,95 @@ export const manipulateShiftTab = (editor: BaseEditor) => {
 
     if (match) {
       const parent = Path.parent(match[1]);
+      const hasPrevious = Editor.previous(editor, { at: parent });
 
-      if (!((match[0] as BaseElement).children[0] as { text: string }).text) {
+      if (Editor.next(editor, { at: parent })) {
+        Transforms.splitNodes(editor, { at: Path.next(parent) });
+
+        const afterTextElement = editor.after(parent);
+        if (afterTextElement?.path) {
+          const afterPathList = [...afterTextElement.path].slice(0, -3);
+          Transforms.moveNodes(editor, {
+            at: afterPathList,
+            to: [...parent, 1],
+          });
+
+          editor.setSelection({
+            anchor: {
+              offset: 0,
+              path: parent,
+            },
+            focus: {
+              offset: 0,
+              path: parent,
+            },
+          });
+        }
+      }
+
+      if (parent.length === 2) {
+        const node = Editor.node(editor, parent);
+        const next = Path.next([parent[0]]);
+        if (node && (node[0] as SlateElement).children[1]) {
+          Transforms.moveNodes(editor, {
+            at: [...parent, 1],
+            to: Path.next(next),
+          });
+        }
         Transforms.moveNodes(editor, {
           at: parent,
-          to: [...parent].slice(0, -2),
+          to: Path.next([parent[0]]),
         });
-        return;
+        Transforms.unwrapNodes(editor);
+        const newProperties: Partial<SlateElement & { type: string }> = {
+          type: Type.PARAGRAPH,
+        };
+        Transforms.setNodes(editor, newProperties);
+
+        const path = Path.next([...parent].slice(0, -1));
+
+        editor.setSelection({
+          anchor: {
+            offset: 0,
+            path: [...path, 0],
+          },
+          focus: {
+            offset: 0,
+            path: [...path, 0],
+          },
+        });
+      }
+
+      if (parent.length > 2) {
+        const next = Path.next([...parent].slice(0, -2));
+        Transforms.moveNodes(editor, {
+          at: parent,
+          to: next,
+        });
+        console.log({
+          anchor: {
+            offset: 0,
+            path: [...next, 0, 0],
+          },
+          focus: {
+            offset: 0,
+            path: [...next, 0, 0],
+          },
+        });
+        editor.setSelection({
+          anchor: {
+            offset: 0,
+            path: [...next, 0, 0],
+          },
+          focus: {
+            offset: 0,
+            path: [...next, 0, 0],
+          },
+        });
+
+        if (!hasPrevious) {
+          Transforms.delete(editor, { at: parent.slice(0, -1) });
+        }
       }
     }
   }

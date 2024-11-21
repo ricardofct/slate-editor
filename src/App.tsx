@@ -39,7 +39,7 @@ function App() {
           <span></span>
           <ol>
             <li><span>1</span></li>
-            <li><span>2</span></li>
+            <li><span>Texto 2 </span></li>
             <li><span>3</span></li>
             <li><span>4</span></li>
             <li><span>5</span></li>
@@ -50,7 +50,7 @@ function App() {
     `);
   const [editing, setEditing] = useState(false);
   const [editor] = useState(() =>
-    withCustomDelete(withHistory(withReact(createEditor())))
+    withCustomDelete(withReact(withHistory(createEditor())))
   );
 
   const document = new DOMParser().parseFromString(html ?? "", "text/html");
@@ -103,9 +103,16 @@ export default App;
 const withCustomDelete = (editor: Editor) => {
   const { deleteBackward, deleteFragment, insertBreak, splitNodes } = editor;
 
+  editor.insertFragment = (...args) => {
+    const getText = (node: BaseElement & { text?: string }): string =>
+      node.text ?? getText(node.children[0] as BaseElement);
+
+    Editor.insertText(editor, getText(args[0][0] as BaseElement));
+  };
+
   editor.deleteBackward = (...args) => {
     const { selection } = editor;
-    debugger;
+
     if (
       selection &&
       Range.isCollapsed(selection) &&
@@ -200,8 +207,25 @@ const withCustomDelete = (editor: Editor) => {
           !!n.type &&
           n.type === Type.LIST_ITEM_TEXT,
       });
+
+      console.log({ match });
+
       if (match) {
         const parent = Path.parent(match[1]);
+        const childText = (match[0] as BaseElement).children[0] as {
+          text: string;
+        };
+
+        Transforms.insertText(
+          editor,
+          childText.text.slice(0, selection.anchor.offset),
+          {
+            at: {
+              anchor: { offset: 0, path: [...match[1], 0] },
+              focus: { offset: childText.text.length, path: [...match[1], 0] },
+            },
+          }
+        );
 
         if (!((match[0] as BaseElement).children[0] as { text: string }).text) {
           if (Editor.next(editor, { at: parent })) {
@@ -292,7 +316,9 @@ const withCustomDelete = (editor: Editor) => {
               type: Type.LIST_ITEM_TEXT,
               children: [
                 {
-                  text: "",
+                  text: (childText as { text: string }).text.slice(
+                    selection.anchor.offset
+                  ),
                 },
               ],
             },
